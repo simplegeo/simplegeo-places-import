@@ -7,6 +7,7 @@ import traceback
 
 # the incoming CSV must have at least id, lat, lon, and name. Will also pick up any other columns as properties.
 # location, owner, deleted, handle, id are reserved properties - we'll lose anything you input with those names
+# additionally will be more lenient on name match if it can match on address (and phone)
 
 def main():
     infile = sys.argv[1]
@@ -31,7 +32,7 @@ def main():
 
         merges = open(outfile, mode='w')
         mwriter = csv.writer(merges) 
-        head = ['source_id','SG_handle','already in SGP']
+        head = ['source_id','SG_handle','SG name','SG address','SG phone','already in SGP']
         head.extend(headers)
         mwriter.writerow(head)
 
@@ -57,12 +58,32 @@ def main():
                 trisims = [ngram.NGram.compare(line['name'].lower(),feature.properties['name'].lower(),N=3) for feature in results]
                 topscore = max(trisims)
                 topmatch = results[trisims.index(topscore)]
+
+                address = None
+                phone = None
+            
+                if 'address' in topmatch.properties:
+                    address = topmatch.properties['address']
+                if 'phone' in topmatch.properties:
+                    phone = topmatch.properties['phone']
+
                 if topscore > .65:
+                    # match if names are very close
                     found = 1
+                elif 'address' in line and address != None:
+                    if line['address'] == address and topscore > .5:
+                        # match if names are close and addresses are equal
+                        found = 1
+                    if 'phone' in line and phone != None and ngram.NGram.compare(line['address'].lower(),address.lower(),N=3) > .6and line['phone'] == phone.replace('+1','').replace(' ','') and topscore > .5:
+                        # match if names are close, addresses are close, and phones are equal
+                        found = 1 
+
+                if found == 1:
                     numfound +=1
-                    outrow = [line['id'],topmatch.id,1]
+                    outrow = [line['id'],topmatch.id,topmatch.properties['name'],address,phone,1]
                     outrow.extend(row)
                     mwriter.writerow(outrow)
+ 
 
             # if we didn't find a match, then create a feature and pass it to add_feature
             if found == 0:
@@ -76,7 +97,7 @@ def main():
                 f = simplegeo.places.Feature((float(line['lat']),float(line['lon'])),properties=props)
                 newSGh = client.add_feature(f)
 
-                outrow = [line['id'], newSGh, 0]
+                outrow = [line['id'], newSGh,'','','', 0]
                 outrow.extend(row)
                 mwriter.writerow(outrow)
 
