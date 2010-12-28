@@ -4,6 +4,7 @@ import csv
 import ngram
 import simplegeo.places
 import traceback
+import time
 
 # the incoming CSV must have at least id, lat, lon, and name. Will also pick up any other columns as properties.
 # location, owner, deleted, handle, id are reserved properties - we'll lose anything you input with those names
@@ -42,16 +43,28 @@ def main():
             linenum += 1
 
             line = dict(zip(headers,row))
-
             # use the biggest word in the name to query on. Too easy to not find place in search if area is dense otherwise
 
             words = line['name'].lower().split()
             wordlens = [len(a) for a in words]
             biglen = max(wordlens)
             bigword = words[wordlens.index(biglen)]
-            
-            # we should agree within 100m on where the feature is
-            results = client.search(float(line['lat']),float(line['lon']),query=bigword, radius=.1)
+           
+            # try to search a few times - sometimes there's a timeout, but usually it gets better in a few seconds 
+            for i in range(3):
+                try: 
+                    # we should agree within 100m on where the feature is
+                    results = client.search(float(line['lat']),float(line['lon']),query=bigword, radius=.1)
+                    break
+                except Exception:
+                    traceback.print_exc()
+                    apiheaders = client.get_most_recent_http_headers()
+                    print 'most recent headers: %s' % apiheaders
+
+                    stime = i*10
+                    time.sleep(stime)                        
+                    if i == 3:
+                        sys.exit(1)
 
             found = 0
             if len(results) > 0:  
