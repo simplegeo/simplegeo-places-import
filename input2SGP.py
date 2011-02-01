@@ -5,13 +5,29 @@ import ngram
 import simplegeo.places
 import traceback
 import time
+import argparse
 
 # the incoming CSV must have at least id, lat, lon, and name. Will also pick up any other columns as properties.
 # location, owner, deleted, handle, id are reserved properties - we'll lose anything you input with those names
 # additionally will be more lenient on name match if it can match on address (and phone)
+# accepts ascii and utf-8 encoding by default. you may specify a different encoding with -e or --encoding at the cmd line
+
+def decode(s, encoding):
+    try:
+        return s.decode('ascii')
+    except:
+        return s.decode(encoding)
 
 def main():
-    infile = sys.argv[1]
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument('infile')
+    parser.add_argument('-e','--encoding')
+    args = parser.parse_args()
+
+    infile = args.infile
+    encoding = args.encoding or 'utf-8'
+
     outfile = infile.replace(".csv","+SGh.csv")
 
     SGkey = ''
@@ -49,6 +65,7 @@ def main():
             wordlens = [len(a) for a in words]
             biglen = max(wordlens)
             bigword = words[wordlens.index(biglen)]
+            bigword = decode(bigword)
            
             # try to search a few times - sometimes there's a timeout, but usually it gets better in a few seconds 
             for i in range(3):
@@ -106,6 +123,9 @@ def main():
                 props.pop('id')
                 # id is reserved for SGP internal use, record_id is the correct name for id from source system
                 props['record_id'] = line['id']
+                #everything is currently a str, make it all safely unicode before passing along
+                for a=>b in props:
+                    props[a] = decode(b)
 
                 f = simplegeo.places.Feature((float(line['lat']),float(line['lon'])),properties=props)
                 newSGh = client.add_feature(f)
